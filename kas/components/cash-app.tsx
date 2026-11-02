@@ -169,7 +169,6 @@ export default function CashApp({ mode }: { mode: AppMode }) {
   const [acc, setAcc] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [expectedLoginEmail, setExpectedLoginEmail] = useState("");
   const [studentNames, setStudentNames] = useState("");
   const [expenseDate, setExpenseDate] = useState(todayInJakarta());
   const [expenseNote, setExpenseNote] = useState("");
@@ -357,25 +356,18 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       return;
     }
     const authEmail = `${username}@${projectRef}.supabase.co`;
-    setExpectedLoginEmail(authEmail);
     try {
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email: authEmail,
         password: loginPassword,
       });
       if (loginError) {
-        if (loginError.code === "email_not_confirmed") {
-          setError(`Email internal akun belum dikonfirmasi. Buka Supabase → Authentication → Users dan konfirmasi akun "${authEmail}".`);
-        } else if (loginError.code === "invalid_credentials" || loginError.status === 400) {
-          setError(`Supabase tidak menerima kredensial. Pastikan akun di Authentication → Users memakai email persis "${authEmail}", statusnya sudah dikonfirmasi, serta password yang dimasukkan benar.`);
-        } else {
-          setError(`Login Supabase gagal (${loginError.code ?? loginError.status ?? "error"}): ${loginError.message}`);
-        }
+        setError("Username atau password salah. Periksa kembali lalu coba lagi.");
         return;
       }
       window.location.assign("/admin");
     } catch (caught) {
-      setError(`Tidak dapat terhubung ke Supabase: ${messageOf(caught)}`);
+      setError("Login belum dapat diproses. Periksa koneksi internet lalu coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -574,7 +566,6 @@ export default function CashApp({ mode }: { mode: AppMode }) {
             <input id="username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} required value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} />
             <label htmlFor="password">Password</label>
             <input id="password" type="password" autoComplete="current-password" required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
-            {expectedLoginEmail && <p className="login-technical-hint">Email internal yang harus ada di Supabase Auth: <code>{expectedLoginEmail}</code></p>}
             <button className="button button-primary button-wide" disabled={busy}>{busy ? "Memeriksa…" : "Masuk ke dashboard"} <span>→</span></button>
             <a className="back-link" href="/">← Kembali ke laporan publik</a>
           </form>
