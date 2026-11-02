@@ -53,6 +53,8 @@ Jalankan `supabase/schema.sql` untuk membuat tabel, data pengaturan awal, fungsi
 
 Pada halaman publik, indikator **REALTIME AKTIF** berarti browser sudah menerima pembaruan langsung. Jika tidak aktif, buka **Supabase → Database → Replication** dan pastikan `settings`, `students`, `payments`, `holidays`, serta `expenses` dipilih untuk Realtime; setelah itu muat ulang aplikasi.
 
+Di dashboard bendahara, tombol **Unduh spreadsheet** mengunduh snapshot `.xlsx` dengan tiga sheet: rekap transparan per mahasiswa dan minggu (☑ lunas, ✗ terlambat, ☐ belum lunas minggu ini), riwayat pembayaran, dan pengeluaran. Sheet rekap menyertakan ringkasan saldo, nominal terbayar dan tunggakan, filter, serta kolom nama dan judul yang dibekukan untuk memudahkan pemeriksaan.
+
 Data yang ditampilkan publik mencakup nama mahasiswa, status pembayaran per minggu, nominal pembayaran, tanggal pembayaran, serta rincian pengeluaran. Pastikan kelas menyetujui tingkat keterbukaan ini sebelum data asli dimasukkan.
 
 Folder source ini tidak menyertakan `data/kas.sqlite`. Jika aplikasi PHP sebelumnya sudah menyimpan data di hosting lain, ekspor dan migrasikan data tersebut ke Supabase sebelum mengganti domain/cutover; deployment baru tidak dapat membaca SQLite dari hosting PHP.

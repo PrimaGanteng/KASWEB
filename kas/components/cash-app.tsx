@@ -50,41 +50,339 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Terjadi kesalahan. Silakan coba lagi.";
 }
 
-function csvCell(value: string | number): string {
-  let text = String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
+type SpreadsheetCell = { value?: string | number; style?: number };
+type SpreadsheetRow = { height?: number; cells: SpreadsheetCell[] };
+type SpreadsheetSheet = {
+  name: string;
+  rows: SpreadsheetRow[];
+  widths: number[];
+  frozenRows?: number;
+  frozenColumns?: number;
+  autoFilter?: string;
+  merges?: string[];
+};
+
+const SPREADSHEET_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;Rp&quot;#,##0"/></numFmts>
+<fonts count="11">
+<font><sz val="10"/><name val="Aptos"/></font>
+<font><b/><sz val="18"/><color rgb="FF0C5844"/><name val="Aptos Display"/></font>
+<font><sz val="10"/><color rgb="FF63746A"/><name val="Aptos"/></font>
+<font><b/><sz val="9"/><color rgb="FF718078"/><name val="Aptos"/></font>
+<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font>
+<font><b/><sz val="10"/><color rgb="FFB94D48"/><name val="Aptos"/></font>
+<font><b/><sz val="12"/><color rgb="FF247554"/><name val="Aptos"/></font>
+<font><b/><sz val="12"/><color rgb="FFB94D48"/><name val="Aptos"/></font>
+<font><b/><sz val="12"/><color rgb="FF9B6B22"/><name val="Aptos"/></font>
+<font><sz val="12"/><color rgb="FF677A9A"/><name val="Aptos"/></font>
+<font><sz val="12"/><color rgb="FF89948D"/><name val="Aptos"/></font>
+</fonts>
+<fills count="9">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE8F4EC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF3F7F4"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF0C5844"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF8FAF8"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF0ED"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF5DF"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFEFF2F8"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left/><right/><top/><bottom style="hair"><color rgb="FFE4EBE6"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="17">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="0" fillId="5" borderId="0" xfId="0" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="5" fillId="6" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="left"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="164" fontId="5" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="0" fontId="6" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="0" fontId="7" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="0" fontId="8" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="0" fontId="9" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+<xf numFmtId="0" fontId="10" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" horizontal="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+<dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
+</styleSheet>`;
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
-function downloadCsv(data: CashData, weeks: Week[]): void {
-  const rows: (string | number)[][] = [
-    ["Nama", "Terbayar", "Tunggakan", ...weeks.map((week) => `M${week.index + 1} ${week.start}`)],
-  ];
-  for (const student of data.students) {
-    const totals = studentTotals(data, student.id, weeks);
-    rows.push([
-      student.name,
-      totals.paid,
-      totals.owed,
-      ...weeks.map((week) => {
-        const status = getWeekStatus(data, student.id, week);
-        const payment = findPayment(data.payments, student.id, week.index);
-        return status === "paid" ? `${payment?.amount ?? 0} (lunas)` : STATUS_LABEL[status];
-      }),
-    ]);
+function spreadsheetColumn(index: number): string {
+  let column = "";
+  let current = index;
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    current = Math.floor((current - 1) / 26);
   }
-  rows.push([], ["Tanggal", "Pengeluaran", "Jumlah"]);
-  for (const expense of data.expenses) rows.push([expense.spent_on, expense.note, expense.amount]);
+  return column;
+}
 
-  const blob = new Blob([`\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`], {
-    type: "text/csv;charset=utf-8",
+function spreadsheetWorksheet(sheet: SpreadsheetSheet): string {
+  const rows = sheet.rows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 1;
+    const cells = row.cells.map((cell, cellIndex) => {
+      if (cell.value === undefined || cell.value === "") return "";
+      const reference = `${spreadsheetColumn(cellIndex + 1)}${rowNumber}`;
+      const style = cell.style === undefined ? "" : ` s="${cell.style}"`;
+      if (typeof cell.value === "number" && Number.isFinite(cell.value)) {
+        return `<c r="${reference}"${style}><v>${cell.value}</v></c>`;
+      }
+      const text = xmlEscape(String(cell.value));
+      return `<c r="${reference}"${style} t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+    }).join("");
+    const height = row.height === undefined ? "" : ` ht="${row.height}" customHeight="1"`;
+    return `<row r="${rowNumber}"${height}>${cells}</row>`;
+  }).join("");
+  const columns = sheet.widths.map((width, index) =>
+    `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`,
+  ).join("");
+  const frozen = sheet.frozenRows || sheet.frozenColumns
+    ? `<sheetViews><sheetView workbookViewId="0"><pane${sheet.frozenColumns ? ` xSplit="${sheet.frozenColumns}"` : ""}${sheet.frozenRows ? ` ySplit="${sheet.frozenRows}"` : ""} topLeftCell="${spreadsheetColumn((sheet.frozenColumns ?? 0) + 1)}${(sheet.frozenRows ?? 0) + 1}" activePane="bottomRight" state="frozen"/><selection pane="bottomRight"/></sheetView></sheetViews>`
+    : `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`;
+  const mergeXml = sheet.merges?.length
+    ? `<mergeCells count="${sheet.merges.length}">${sheet.merges.map((merge) => `<mergeCell ref="${merge}"/>`).join("")}</mergeCells>`
+    : "";
+  const filterXml = sheet.autoFilter ? `<autoFilter ref="${sheet.autoFilter}"/>` : "";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${frozen}<cols>${columns}</cols><sheetData>${rows}</sheetData>${filterXml}${mergeXml}<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/></worksheet>`;
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function zipStoredFiles(files: { name: string; content: string }[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let localOffset = 0;
+
+  for (const file of files) {
+    const name = encoder.encode(file.name);
+    const data = encoder.encode(file.content);
+    const crc = crc32(data);
+    const local = new Uint8Array(30 + name.length);
+    const localView = new DataView(local.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, 0, true);
+    localView.setUint16(12, 0x21, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, data.length, true);
+    localView.setUint32(22, data.length, true);
+    localView.setUint16(26, name.length, true);
+    localView.setUint16(28, 0, true);
+    local.set(name, 30);
+    localParts.push(local, data);
+
+    const central = new Uint8Array(46 + name.length);
+    const centralView = new DataView(central.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, 0, true);
+    centralView.setUint16(14, 0x21, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, name.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, localOffset, true);
+    central.set(name, 46);
+    centralParts.push(central);
+    localOffset += local.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(4, 0, true);
+  endView.setUint16(6, 0, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, localOffset, true);
+  endView.setUint16(20, 0, true);
+
+  const totalSize = localOffset + centralSize + end.length;
+  const archive = new Uint8Array(totalSize);
+  let offset = 0;
+  for (const part of [...localParts, ...centralParts, end]) {
+    archive.set(part, offset);
+    offset += part.length;
+  }
+  return archive;
+}
+
+async function downloadSpreadsheet(data: CashData, weeks: Week[]): Promise<void> {
+  const today = todayInJakarta();
+  const totals = cashTotals(data, weeks, today);
+  const students = [...data.students].sort((a, b) => a.name.localeCompare(b.name, "id"));
+  const finalColumn = Math.max(3, weeks.length + 3);
+  const finalColName = spreadsheetColumn(finalColumn);
+  const recapRows: SpreadsheetRow[] = [
+    { height: 36, cells: [{ value: data.settings.title, style: 1 }] },
+    { height: 22, cells: [{ value: `ARSIP TRANSPARAN · Diunduh ${fullDate(today)} · Snapshot data saat file dibuat`, style: 2 }] },
+    { height: 22, cells: [{ value: `Periode iuran: ${fullDate(data.settings.start_date)} – ${fullDate(data.settings.end_date)}  |  Iuran: ${rupiah(data.settings.weekly_amount)}/minggu  |  Denda: ${rupiah(data.settings.late_fee)}`, style: 2 }] },
+    { cells: [] },
+    { height: 22, cells: [
+      { value: "TOTAL TERKUMPUL", style: 3 },
+      { value: "PENGELUARAN", style: 3 },
+      { value: "SALDO KAS", style: 3 },
+      { value: "TUNGGAKAN", style: 3 },
+    ] },
+    { height: 26, cells: [
+      { value: totals.collected, style: 4 },
+      { value: totals.spent, style: 5 },
+      { value: totals.balance, style: 4 },
+      { value: totals.owed, style: 6 },
+    ] },
+    { cells: [] },
+    { height: 24, cells: [{ value: "KETERANGAN: ☑ Lunas  ·  ✗ Terlambat  ·  ☐ Belum lunas (minggu ini)  ·  — Minggu libur  ·  · Belum waktunya. Tunggakan ditampilkan terpisah.", style: 7 }] },
+    { height: 32, cells: [
+      { value: "NAMA MAHASISWA", style: 8 },
+      { value: "TOTAL TERBAYAR", style: 8 },
+      { value: "TUNGGAKAN", style: 8 },
+      ...weeks.map((week) => ({ value: `M${week.index + 1} · ${shortDate(week.start)}`, style: 8 })),
+    ] },
+  ];
+
+  for (const student of students) {
+    const summary = studentTotals(data, student.id, weeks, today);
+    recapRows.push({
+      height: 23,
+      cells: [
+        { value: student.name, style: 9 },
+        { value: summary.paid, style: 10 },
+        { value: summary.owed, style: summary.owed ? 11 : 10 },
+        ...weeks.map((week) => {
+          const status = getWeekStatus(data, student.id, week, today);
+          const cellStyle = status === "paid" ? 12
+            : status === "over" ? 13
+              : status === "now" ? 14
+                : status === "holiday" ? 15 : 16;
+          const value = status === "paid" ? "☑"
+            : status === "over" ? "✗"
+              : status === "now" ? "☐"
+                : status === "holiday" ? "—" : "·";
+          return { value, style: cellStyle };
+        }),
+      ],
+    });
+  }
+
+  const payments = sortPayments(data.payments, data.students);
+  const paymentRows: SpreadsheetRow[] = [{
+    cells: ["TANGGAL BAYAR", "NAMA MAHASISWA", "MINGGU", "JUMLAH", "KETERANGAN"]
+      .map((value) => ({ value, style: 8 })),
+  }];
+  for (const payment of payments) {
+    paymentRows.push({ cells: [
+      { value: fullDate(payment.paid_on), style: 9 },
+      { value: payment.studentName, style: 9 },
+      { value: `Minggu ${payment.week_index + 1}`, style: 9 },
+      { value: payment.amount, style: 10 },
+      { value: payment.acc ? "ACC bendahara" : "Lunas", style: 9 },
+    ] });
+  }
+
+  const expenses = [...data.expenses].sort((a, b) => b.spent_on.localeCompare(a.spent_on));
+  const expenseRows: SpreadsheetRow[] = [{
+    cells: ["TANGGAL", "KETERANGAN", "JUMLAH"].map((value) => ({ value, style: 8 })),
+  }];
+  for (const expense of expenses) {
+    expenseRows.push({ cells: [
+      { value: fullDate(expense.spent_on), style: 9 },
+      { value: expense.note, style: 9 },
+      { value: expense.amount, style: 10 },
+    ] });
+  }
+
+  const sheets: SpreadsheetSheet[] = [
+    { name: "Arsip Transparan", rows: recapRows, widths: [30, 19, 19, ...weeks.map(() => 13)], frozenRows: 9, frozenColumns: 1, autoFilter: students.length ? `A9:${finalColName}${recapRows.length}` : undefined, merges: [`A1:${finalColName}1`, `A2:${finalColName}2`, `A3:${finalColName}3`, `A8:${finalColName}8`] },
+    { name: "Riwayat Pembayaran", rows: paymentRows, widths: [20, 30, 14, 20, 19], frozenRows: 1, autoFilter: payments.length ? `A1:E${paymentRows.length}` : undefined },
+    { name: "Pengeluaran", rows: expenseRows, widths: [20, 38, 20], frozenRows: 1, autoFilter: expenses.length ? `A1:C${expenseRows.length}` : undefined },
+  ];
+  const worksheetFiles = sheets.map((sheet, index) => ({
+    name: `xl/worksheets/sheet${index + 1}.xml`,
+    content: spreadsheetWorksheet(sheet),
+  }));
+  const workbookSheets = sheets.map((sheet, index) =>
+    `<sheet name="${xmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
+  ).join("");
+  const workbookRelationships = sheets.map((_, index) =>
+    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+  ).join("");
+  const contentTypes = sheets.map((_, index) =>
+    `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+  ).join("");
+
+  const files = [
+    {
+      name: "[Content_Types].xml",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentTypes}</Types>`,
+    },
+    {
+      name: "_rels/.rels",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    },
+    {
+      name: "xl/workbook.xml",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${workbookSheets}</sheets><calcPr calcId="0"/></workbook>`,
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${workbookRelationships}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    },
+    { name: "xl/styles.xml", content: SPREADSHEET_STYLES },
+    ...worksheetFiles,
+  ];
+  const archive = zipStoredFiles(files);
+  const blob = new Blob([archive.buffer as ArrayBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `rekap-kas-${todayInJakarta()}.csv`;
+  anchor.download = `arsip-kas-${today}.xlsx`;
   anchor.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function Shell({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
@@ -166,6 +464,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [acc, setAcc] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -542,6 +841,19 @@ export default function CashApp({ mode }: { mode: AppMode }) {
     }
   }
 
+  async function exportSpreadsheet() {
+    setExporting(true);
+    setError("");
+    try {
+      await downloadSpreadsheet(data, weeks);
+      setNotice("Spreadsheet arsip kas berhasil diunduh.");
+    } catch (caught) {
+      setError(`Gagal membuat spreadsheet: ${messageOf(caught)}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) {
     return <Shell><div className="loading-panel"><span className="spinner" /><p>Memuat laporan kas…</p></div></Shell>;
   }
@@ -640,7 +952,8 @@ export default function CashApp({ mode }: { mode: AppMode }) {
               onDeleteStudent={deleteStudent}
               onDeleteExpense={deleteExpense}
               onSaveSettings={saveSettings}
-              onExport={() => downloadCsv(data, weeks)}
+              onExport={exportSpreadsheet}
+              exporting={exporting}
               acc={acc}
               setAcc={setAcc}
               newPassword={newPassword}
@@ -825,7 +1138,8 @@ function AdminPanel(props: {
   onDeleteStudent: (student: Student) => void;
   onDeleteExpense: (expense: Expense) => void;
   onSaveSettings: (event: FormEvent<HTMLFormElement>) => void;
-  onExport: () => void;
+  onExport: () => Promise<void>;
+  exporting: boolean;
   acc: boolean;
   setAcc: (value: boolean) => void;
   newPassword: string;
@@ -960,8 +1274,8 @@ function AdminPanel(props: {
               </form>
             </section>
             <section className="panel export-panel">
-              <div><span className="eyebrow">SALINAN DATA</span><h3>Unduh rekap kas</h3><p>Data pembayaran mingguan dan pengeluaran dalam format CSV.</p></div>
-              <button className="button button-secondary" onClick={props.onExport}>Unduh CSV <span>↓</span></button>
+              <div><span className="eyebrow">SALINAN DATA</span><h3>Unduh spreadsheet arsip kas</h3><p>File Excel dengan rekap centang tiap minggu, ringkasan saldo, pembayaran, dan pengeluaran.</p></div>
+              <button className="button button-secondary" disabled={props.exporting} onClick={() => void props.onExport()}>{props.exporting ? "Menyiapkan…" : "Unduh spreadsheet"} <span>↓</span></button>
             </section>
           </div>
         </div>
