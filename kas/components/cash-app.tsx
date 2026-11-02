@@ -17,7 +17,8 @@ import {
   studentTotals,
   todayInJakarta,
 } from "@/lib/cash";
-import type { CashData, Expense, Settings, Student, Week, WeekStatus } from "@/lib/types";
+import type { CashData, Expense, Payment, Settings, Student, Week, WeekStatus } from "@/lib/types";
+import InstallAppButton from "@/components/install-app-button";
 
 type AppMode = "public" | "login" | "admin";
 type Result = { error: { message: string } | null };
@@ -394,6 +395,7 @@ function Shell({ children, admin = false }: { children: ReactNode; admin?: boole
           <span>Kas Kelas<span className="brand-dot">.</span></span>
         </a>
         <nav className="top-nav" aria-label="Navigasi utama">
+          <InstallAppButton />
           {admin ? (
             <>
               <a href="/">Lihat laporan publik</a>
@@ -614,7 +616,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       const result = await action();
       if (result.error) throw new Error(result.error.message);
       setNotice(successMessage);
-      await refresh(false);
+      void refresh(false);
       return true;
     } catch (caught) {
       setError(messageOf(caught));
@@ -746,19 +748,73 @@ export default function CashApp({ mode }: { mode: AppMode }) {
     const supabase = getSupabase();
     if (!supabase) return;
     const payment = findPayment(data.payments, student.id, week.index);
+    const successMessage = payment ? "Pembayaran dibatalkan." : "Pembayaran berhasil dicatat.";
+    const pendingId = `pending:${student.id}:${week.index}`;
+    let optimisticPayment: Payment | undefined;
     if (payment) {
-      await mutate(async () => await supabase.from("payments").delete().eq("id", payment.id), "Pembayaran dibatalkan.");
-      return;
+      setData((current) => ({
+        ...current,
+        payments: current.payments.filter((item) => item.id !== payment.id),
+      }));
+    } else {
+      const late = week.due < today;
+      const newPayment: Payment = {
+        id: pendingId,
+        student_id: student.id,
+        week_index: week.index,
+        amount: data.settings.weekly_amount + (late && !acc ? data.settings.late_fee : 0),
+        paid_on: today,
+        acc: late && acc,
+      };
+      optimisticPayment = newPayment;
+      setData((current) => ({ ...current, payments: [...current.payments, newPayment] }));
     }
-    const late = week.due < today;
-    const amount = data.settings.weekly_amount + (late && !acc ? data.settings.late_fee : 0);
-    await mutate(async () => await supabase.from("payments").insert({
-      student_id: student.id,
-      week_index: week.index,
-      amount,
-      paid_on: today,
-      acc: late && acc,
-    }), "Pembayaran berhasil dicatat.");
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      if (payment) {
+        const { error: deleteError } = await supabase.from("payments").delete().eq("id", payment.id);
+        if (deleteError) throw deleteError;
+      } else if (optimisticPayment) {
+        const { data: savedPayment, error: insertError } = await supabase
+          .from("payments")
+          .insert({
+            student_id: optimisticPayment.student_id,
+            week_index: optimisticPayment.week_index,
+            amount: optimisticPayment.amount,
+            paid_on: optimisticPayment.paid_on,
+            acc: optimisticPayment.acc,
+          })
+          .select("*")
+          .single();
+        if (insertError) throw insertError;
+        if (!savedPayment) throw new Error("Pembayaran tidak dapat diverifikasi. Muat ulang data lalu periksa statusnya.");
+        setData((current) => ({
+          ...current,
+          payments: [
+            ...current.payments.filter((item) => item.id !== pendingId
+              && !(item.student_id === student.id && item.week_index === week.index)),
+            savedPayment,
+          ],
+        }));
+      }
+      setNotice(successMessage);
+      void refresh(false);
+    } catch (caught) {
+      setData((current) => {
+        const withoutPending = current.payments.filter((item) => item.id !== pendingId);
+        if (!payment || withoutPending.some((item) => item.id === payment.id)) {
+          return { ...current, payments: withoutPending };
+        }
+        return { ...current, payments: [...withoutPending, payment] };
+      });
+      setError(messageOf(caught));
+      void refresh(false);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function payArrears(student: Student) {

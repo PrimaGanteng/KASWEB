@@ -46,6 +46,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .top-nav .nav-cta { padding: 10px 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--green-dark); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, color .2s ease; }
 .top-nav .nav-cta:hover { transform: translateY(-2px); border-color: #c8dfd0; box-shadow: 0 7px 17px rgba(27,57,43,.08); }
 .nav-cta span { padding-left: 5px; }
+.top-nav .install-app-button { cursor: pointer; font-weight: 700; }
+.top-nav .install-app-button:disabled { cursor: wait; opacity: .65; }
+.app-installed-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 11px; white-space: nowrap; }
+.install-dialog-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15, 31, 24, .48); animation: fade-in .18s ease both; }
+.install-dialog { position: relative; width: min(100%, 410px); padding: 30px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 24px 70px rgba(15, 31, 24, .2); animation: card-enter .28s cubic-bezier(.2,.8,.2,1) both; }
+.install-dialog h2 { margin: 8px 0 4px; font: 800 24px Manrope, sans-serif; letter-spacing: -.7px; }
+.install-dialog > .muted { margin: 0 0 20px; font-size: 13px; }
+.install-dialog-icon { display: grid; width: 43px; height: 43px; margin-bottom: 20px; place-items: center; border-radius: 14px; background: var(--green-soft); color: var(--green); font-size: 23px; }
+.install-dialog-close { position: absolute; top: 14px; right: 15px; width: 34px; height: 34px; border: 0; border-radius: 10px; background: #f3f6f3; color: #64736a; cursor: pointer; font-size: 21px; }
+.install-steps { display: grid; gap: 12px; margin: 0 0 22px; padding-left: 22px; color: #59685f; font-size: 12px; }
+.install-steps strong { color: var(--ink); }
+.install-error { margin: 0 0 14px; color: var(--red); font-size: 11px; }
+.button-wide { width: 100%; }
 
 .hero { position: relative; overflow: hidden; min-height: 306px; padding: 45px 54px 40px; border-radius: 24px; color: #fff; background: linear-gradient(118deg, #0c5944 0%, #14775a 58%, #208364 100%); box-shadow: 0 20px 46px rgba(12, 88, 68, .18); animation: hero-enter .7s cubic-bezier(.2,.8,.2,1) both; }
 .hero-content { position: relative; z-index: 1; max-width: 720px; }
@@ -299,7 +312,8 @@ textarea { resize: vertical; }
   .page-shell { width: calc(100% - 24px); }
   .topbar { height: 68px; }
   .brand { font-size: 15px; }.brand-mark { width: 32px; height: 32px; }
-  .top-nav { gap: 10px; font-size: 11px; }.top-nav .nav-cta { padding: 8px 10px; }
+  .top-nav { gap: 7px; font-size: 10px; }.top-nav .nav-cta { padding: 8px 8px; }.app-installed-badge { max-width: 90px; font-size: 9px; white-space: normal; }
+  .install-dialog { padding: 25px 21px; }
   .hero { min-height: auto; padding: 31px 23px 28px; border-radius: 19px; }
   .hero h1 { margin-top: 15px; font-size: 29px; letter-spacing: -1px; }
   .hero p { font-size: 12px; }

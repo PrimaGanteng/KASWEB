@@ -55,6 +55,12 @@ Pada halaman publik, indikator **REALTIME AKTIF** berarti browser sudah menerima
 
 Di dashboard bendahara, tombol **Unduh spreadsheet** mengunduh snapshot `.xlsx` dengan tiga sheet: rekap transparan per mahasiswa dan minggu (☑ lunas, ✗ terlambat, ☐ belum lunas minggu ini), riwayat pembayaran, dan pengeluaran. Sheet rekap menyertakan ringkasan saldo, nominal terbayar dan tunggakan, filter, serta kolom nama dan judul yang dibekukan untuk memudahkan pemeriksaan.
 
+## Pasang sebagai aplikasi
+
+Website menyediakan manifest PWA dan tombol **Pasang aplikasi** pada browser yang mendukung instalasi. Buka website yang sudah di-deploy melalui HTTPS, lalu pilih tombol tersebut. Di iPhone/iPad, buka website memakai Safari, ketuk **Bagikan → Tambahkan ke Layar Utama → Tambah**. Jika tombol instalasi belum muncul di browser desktop/Android, gunakan menu browser dan pilih **Install app / Pasang aplikasi** atau coba lagi setelah halaman dimuat.
+
+Aplikasi yang terpasang tetap mengambil data kas dari Supabase secara langsung. Service worker tidak menyimpan halaman, data kas, atau dashboard secara offline agar informasi lama tidak disajikan seolah-olah data terbaru. Instalasi membutuhkan koneksi internet untuk memuat laporan dan pembaruan realtime.
+
 Data yang ditampilkan publik mencakup nama mahasiswa, status pembayaran per minggu, nominal pembayaran, tanggal pembayaran, serta rincian pengeluaran. Pastikan kelas menyetujui tingkat keterbukaan ini sebelum data asli dimasukkan.
 
 Folder source ini tidak menyertakan `data/kas.sqlite`. Jika aplikasi PHP sebelumnya sudah menyimpan data di hosting lain, ekspor dan migrasikan data tersebut ke Supabase sebelum mengganti domain/cutover; deployment baru tidak dapat membaca SQLite dari hosting PHP.
