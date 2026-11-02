@@ -24,15 +24,19 @@ Website laporan kas kelas dengan Next.js, TypeScript, dan Supabase. Halaman publ
 
 ## Membuat akses bendahara
 
-1. Di Supabase, buka **Authentication → Users** dan buat pengguna dengan email dan password bendahara. Jangan aktifkan pendaftaran publik untuk aplikasi ini.
-2. Salin UUID pengguna, lalu jalankan di SQL Editor:
+Form login menerima username, sedangkan Supabase Auth menggunakan email. Aplikasi memetakan username secara internal ke alamat teknis `<username>@<project-ref>.supabase.co`; alamat tersebut hanya dipakai untuk autentikasi dan tidak ditampilkan pada formulir login.
+
+1. Di Supabase, buka **Authentication → Users** lalu buat pengguna bendahara dengan alamat `<username>@<project-ref>.supabase.co`. Ganti `<project-ref>` dengan bagian sebelum `.supabase.co` pada URL project Anda. Contoh, untuk username `admintekdus`, alamat internal berbentuk `admintekdus@abcdefghijklmnop.supabase.co`. Gunakan password awal yang sudah ditentukan oleh pemilik project; setelah login, aplikasi akan mewajibkan password tersebut diganti sebelum dashboard dapat digunakan. Jangan aktifkan pendaftaran publik untuk aplikasi ini.
+2. Salin UUID pengguna, lalu jalankan di SQL Editor. Sesuaikan username jika diperlukan:
 
    ```sql
-   insert into public.admins (user_id)
-   values ('<UUID-PENGGUNA-SUPABASE>');
+   insert into public.admins (user_id, username)
+   values ('<UUID-PENGGUNA-SUPABASE>', 'admintekdus');
    ```
 
-3. Masuk dari tautan **Masuk bendahara** pada website. Pengguna yang belum tercatat pada `public.admins` tidak dapat mengubah data.
+3. Masuk dari tautan **Masuk bendahara** dengan username dan password yang dibuat di Supabase. Pengguna yang belum tercatat pada `public.admins` tidak dapat mengubah data.
+
+Username awal yang diminta adalah `admintekdus`. Password awal hanya untuk proses penyiapan akun di Supabase, bukan kode login yang ditanamkan di aplikasi; wajib menggantinya saat login pertama. Jangan menyimpan password di repository. Jika skema lama pernah dijalankan, jalankan skema terbaru lagi untuk menambah kolom username dan pengingat penggantian password. Lalu isi kolom username pada baris admin Anda dengan menjalankan `update public.admins set username = 'admintekdus' where user_id = '<UUID-PENGGUNA-SUPABASE>';`.
 
 ## Deploy ke Vercel
 
@@ -45,7 +49,9 @@ Jangan masukkan `service_role` key ke dalam website atau variabel yang diawali `
 
 ## Database dan transparansi
 
-Jalankan `supabase/schema.sql` satu kali untuk membuat tabel, data pengaturan awal, fungsi pengecekan admin, dan kebijakan Row Level Security. Tabel pengaturan, mahasiswa, pembayaran, minggu libur, dan pengeluaran dapat dibaca publik agar laporan dapat diverifikasi. Hanya akun admin yang tercatat dapat menambah, mengubah, atau menghapus data. Password tidak disimpan di tabel aplikasi; autentikasi dikelola Supabase Auth.
+Jalankan `supabase/schema.sql` untuk membuat tabel, data pengaturan awal, fungsi pengecekan admin, kebijakan Row Level Security, serta mendaftarkan tabel laporan pada publikasi Supabase Realtime. Jalankan ulang skrip jika project sudah disiapkan dengan versi skema sebelumnya. Tabel pengaturan, mahasiswa, pembayaran, minggu libur, dan pengeluaran dapat dibaca publik agar laporan dapat diverifikasi. Hanya akun admin yang tercatat dapat menambah, mengubah, atau menghapus data. Perubahan data disiarkan otomatis ke semua browser yang sedang membuka laporan atau dashboard. Jika koneksi realtime terputus, muat ulang halaman untuk mengambil data terbaru. Password tidak disimpan di tabel aplikasi; autentikasi dikelola Supabase Auth.
+
+Pada halaman publik, indikator **REALTIME AKTIF** berarti browser sudah menerima pembaruan langsung. Jika tidak aktif, buka **Supabase → Database → Replication** dan pastikan `settings`, `students`, `payments`, `holidays`, serta `expenses` dipilih untuk Realtime; setelah itu muat ulang aplikasi.
 
 Data yang ditampilkan publik mencakup nama mahasiswa, status pembayaran per minggu, nominal pembayaran, tanggal pembayaran, serta rincian pengeluaran. Pastikan kelas menyetujui tingkat keterbukaan ini sebelum data asli dimasukkan.
 

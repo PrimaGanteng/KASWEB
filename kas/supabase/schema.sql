@@ -39,8 +39,17 @@ create table if not exists public.expenses (
 
 create table if not exists public.admins (
   user_id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique check (username ~ '^[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}$'),
   created_at timestamptz not null default now()
 );
+
+alter table public.admins
+  add column if not exists username text;
+alter table public.admins
+  add column if not exists must_change_password boolean not null default true;
+create unique index if not exists admins_username_unique
+  on public.admins (username)
+  where username is not null;
 
 insert into public.settings (id)
 values (1)
@@ -113,9 +122,33 @@ create policy "Admins manage expenses"
 drop policy if exists "Admins can read own admin record" on public.admins;
 create policy "Admins can read own admin record"
   on public.admins for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists "Admins can update own admin record" on public.admins;
+create policy "Admins can update own admin record"
+  on public.admins for update to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
 
 grant select on public.settings, public.students, public.payments, public.holidays, public.expenses
   to anon, authenticated;
 grant insert, update, delete on public.settings, public.students, public.payments, public.holidays, public.expenses
   to authenticated;
-grant select on public.admins to authenticated;
+grant select, update on public.admins to authenticated;
+
+do $$
+declare
+  target_table text;
+begin
+  foreach target_table in array array['settings', 'students', 'payments', 'holidays', 'expenses']
+  loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = target_table
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', target_table);
+    end if;
+  end loop;
+end;
+$$;

@@ -160,12 +160,14 @@ export default function CashApp({ mode }: { mode: AppMode }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [authorized, setAuthorized] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "offline">("connecting");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [busy, setBusy] = useState(false);
   const [acc, setAcc] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
+  const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [studentNames, setStudentNames] = useState("");
   const [expenseDate, setExpenseDate] = useState(todayInJakarta());
@@ -175,7 +177,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
   const [newPassword, setNewPassword] = useState("");
   const initializedWeek = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (showLoading = true) => {
     const supabase = getSupabase();
     if (!supabase) {
       setLoading(false);
@@ -188,7 +190,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       return;
     }
 
-    setLoading(true);
+    if (showLoading) setLoading(true);
     setError("");
     try {
       if (mode === "admin") {
@@ -200,7 +202,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
         }
         const { data: adminRecord, error: adminError } = await supabase
           .from("admins")
-          .select("user_id")
+          .select("user_id, must_change_password")
           .eq("user_id", userResult.user.id)
           .maybeSingle();
         if (adminError) throw adminError;
@@ -210,6 +212,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
           return;
         }
         setAuthorized(true);
+        setMustChangePassword(Boolean(adminRecord.must_change_password));
       }
 
       const [settingsResult, studentsResult, paymentsResult, expensesResult, holidaysResult] = await Promise.all([
@@ -242,13 +245,49 @@ export default function CashApp({ mode }: { mode: AppMode }) {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [mode]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (mode === "login") return;
+    const supabase = getSupabase();
+    if (!supabase) {
+      setRealtimeStatus("offline");
+      return;
+    }
+
+    const tables = ["settings", "students", "payments", "holidays", "expenses"];
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const channel = supabase.channel("public-cash-live-updates");
+    for (const table of tables) {
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        () => {
+          clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(() => void refresh(false), 120);
+        },
+      );
+    }
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        setRealtimeStatus("connected");
+        void refresh(false);
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        setRealtimeStatus("offline");
+      }
+    });
+
+    return () => {
+      clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [mode, refresh]);
 
   const weeks = useMemo(
     () => buildWeeks(data.settings.start_date, data.settings.end_date),
@@ -276,7 +315,7 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       const result = await action();
       if (result.error) throw new Error(result.error.message);
       setNotice(successMessage);
-      await refresh();
+      await refresh(false);
       return true;
     } catch (caught) {
       setError(messageOf(caught));
@@ -296,13 +335,33 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       setBusy(false);
       return;
     }
+    const username = loginUsername.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) {
+      setError("Username harus 3–32 karakter dan hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.");
+      setBusy(false);
+      return;
+    }
+    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    let projectRef = "";
+    try {
+      projectRef = new URL(projectUrl ?? "").hostname.split(".")[0];
+    } catch {
+      setError("NEXT_PUBLIC_SUPABASE_URL belum diatur dengan benar.");
+      setBusy(false);
+      return;
+    }
+    if (!projectRef || projectRef === "localhost" || projectRef === "127") {
+      setError("URL project Supabase tidak valid untuk login username.");
+      setBusy(false);
+      return;
+    }
     const { error: loginError } = await supabase.auth.signInWithPassword({
-      email: loginEmail.trim(),
+      email: `${username}@${projectRef}.supabase.co`,
       password: loginPassword,
     });
     setBusy(false);
     if (loginError) {
-      setError("Email atau password salah. Pastikan akun sudah dibuat di Supabase Auth.");
+      setError("Username atau password salah. Pastikan akun bendahara sudah dibuat di Supabase Auth.");
       return;
     }
     window.location.assign("/admin");
@@ -459,9 +518,22 @@ export default function CashApp({ mode }: { mode: AppMode }) {
     if (!supabase) return;
     const ok = await mutate(async () => {
       const { error: passwordError } = await supabase.auth.updateUser({ password: newPassword });
-      return { error: passwordError };
+      if (passwordError) return { error: passwordError };
+      if (mustChangePassword) {
+        const { data: userResult, error: userError } = await supabase.auth.getUser();
+        if (userError) return { error: userError };
+        const { error: adminError } = await supabase
+          .from("admins")
+          .update({ must_change_password: false })
+          .eq("user_id", userResult.user?.id ?? "");
+        return { error: adminError };
+      }
+      return { error: null };
     }, "Password berhasil diperbarui.");
-    if (ok) setNewPassword("");
+    if (ok) {
+      setNewPassword("");
+      setMustChangePassword(false);
+    }
   }
 
   if (loading) {
@@ -482,10 +554,10 @@ export default function CashApp({ mode }: { mode: AppMode }) {
             <span className="form-icon">↗</span>
             <span className="eyebrow">SELAMAT DATANG KEMBALI</span>
             <h2>Masuk bendahara</h2>
-            <p className="muted">Gunakan akun email yang sudah dibuat di Supabase Auth.</p>
+            <p className="muted">Masuk menggunakan username bendahara. Email tidak perlu dimasukkan.</p>
             {error && <Alert>{error}</Alert>}
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" autoComplete="username" required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} />
+            <label htmlFor="username">Username</label>
+            <input id="username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} required value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} />
             <label htmlFor="password">Password</label>
             <input id="password" type="password" autoComplete="current-password" required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
             <button className="button button-primary button-wide" disabled={busy}>{busy ? "Memeriksa…" : "Masuk ke dashboard"} <span>→</span></button>
@@ -504,12 +576,27 @@ export default function CashApp({ mode }: { mode: AppMode }) {
       <Shell admin>
         <section className="admin-heading">
           <div><span className="eyebrow">PANEL PENGELOLAAN</span><h1>Dashboard bendahara</h1><p>Kelola pemasukan, pengeluaran, dan data kas kelas.</p></div>
-          <button className="button button-quiet" onClick={() => void signOut()}>Keluar <span>↗</span></button>
+          <div className="admin-heading-actions">
+            <span className={`admin-live-pill ${realtimeStatus}`}><i />{realtimeStatus === "connected" ? "Tersinkron" : realtimeStatus === "connecting" ? "Menghubungkan" : "Koneksi terputus"}</span>
+            <button className="button button-quiet" onClick={() => void signOut()}>Keluar <span>↗</span></button>
+          </div>
         </section>
         {error && <Alert>{error}</Alert>}
         {notice && <Alert success>{notice}</Alert>}
+        {authorized && mustChangePassword && (
+          <section className="panel first-login-panel">
+            <span className="eyebrow">LANGKAH KEAMANAN WAJIB</span>
+            <h2>Ganti password awal Anda</h2>
+            <p className="muted">Demi keamanan, buat password pribadi sebelum mulai mengelola kas. Password baru minimal 8 karakter.</p>
+            <form onSubmit={changePassword}>
+              <label htmlFor="first-login-password">Password pribadi baru</label>
+              <input id="first-login-password" type="password" minLength={8} autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              <button className="button button-primary" disabled={busy}>Simpan password baru <span>→</span></button>
+            </form>
+          </section>
+        )}
         {authorized && (
-          <>
+          !mustChangePassword && <>
             <div className="stats-grid admin-stats">
               <StatCard label="Saldo kas" value={rupiah(totals.balance)} note="Total masuk dikurangi pengeluaran" variant="stat-primary" />
               <StatCard label="Total pemasukan" value={rupiah(totals.collected)} note={`${data.payments.length} transaksi tercatat`} />
@@ -573,10 +660,10 @@ export default function CashApp({ mode }: { mode: AppMode }) {
         <div className="hero-orb hero-orb-one" />
         <div className="hero-orb hero-orb-two" />
         <div className="hero-content">
-          <div className="hero-kicker"><span className="live-dot" /> LAPORAN TERBUKA <span className="hero-kicker-separator">·</span> {fullDate(today)}</div>
+          <div className="hero-kicker"><span className={`live-dot ${realtimeStatus === "offline" ? "live-dot-offline" : ""}`} /> LAPORAN TERBUKA <span className="hero-kicker-separator">·</span> {fullDate(today)} <span className="live-status">{realtimeStatus === "connected" ? "REALTIME AKTIF" : realtimeStatus === "connecting" ? "MENGHUBUNGKAN…" : "LIVE TERPUTUS"}</span></div>
           <h1>{data.settings.title}</h1>
           <p>Catatan kas kelas yang bisa dipantau siapa saja. Jelas, terbuka, dan selalu diperbarui.</p>
-          <div className="hero-meta"><span>↻ Data langsung</span><span>⌂ Periode {shortDate(data.settings.start_date)} – {shortDate(data.settings.end_date)}</span></div>
+          <div className="hero-meta"><span>↻ Perubahan data tersinkron otomatis</span><span>⌂ Periode {shortDate(data.settings.start_date)} – {shortDate(data.settings.end_date)}</span></div>
         </div>
         <div className="hero-watermark" aria-hidden="true">Rp</div>
       </section>
